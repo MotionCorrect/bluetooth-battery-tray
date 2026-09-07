@@ -158,9 +158,9 @@ HKCU\Software\Microsoft\Windows\CurrentVersion\Run\BluetoothBatteryTray
 
 ## CI and releases
 
-GitHub Actions builds the app on `windows-latest`, publishes a self-contained `win-x64` executable, and uploads it as an artifact.
+GitHub Actions builds the app on `windows-latest`, publishes a self-contained `win-x64` executable, signs Windows release binaries with MotionCorrect's Azure Artifact Signing setup, and uploads the packaged artifact.
 
-Tagged releases include the GitHub source archives automatically plus a downloadable Windows binary archive.
+Tagged releases include the GitHub source archives automatically plus a downloadable signed Windows binary archive.
 
 ## Limitations
 
