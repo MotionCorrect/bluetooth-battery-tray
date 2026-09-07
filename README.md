@@ -1,17 +1,18 @@
 # Bluetooth Battery Tray
 
-A tiny configurable Windows tray utility for monitoring a Bluetooth Low Energy peripheral that exposes the standard BLE Battery Service.
+A tiny configurable Windows tray utility for monitoring one or more Bluetooth Low Energy peripherals that expose the standard BLE Battery Service.
 
-Device-specific Bluetooth/USB identifiers live in a local settings file, not in code.
+Device-specific Bluetooth/USB/HID identifiers live in a local settings file, not in code.
 
 ## Features
 
 - Reads exact battery percentage from the standard BLE Battery Service.
+- Supports multiple configured devices and uses the lowest current percentage for the tray badge color/number.
 - Displays large, color-coded percentage digits in the Windows notification area.
-- Shows exact status in the tray tooltip and right-click menu.
-- Warns when battery is low.
-- Optional USB-C/wired-mode detection using a configurable USB/HID device-id fragment.
-- In USB-C mode, can show `USB-C connected` and the last known Bluetooth percentage when available.
+- Shows exact per-device status in the tray tooltip and right-click menu.
+- Warns when a configured device is low.
+- Optional USB-C/wired/HID detection using a configurable PnP device-id fragment.
+- In fallback mode, can show a custom connection label and the last known Bluetooth percentage when available.
 - Optional current-user auto-start via the Windows `HKCU` Run key.
 - No installer required; publish as a single self-contained Windows executable.
 
@@ -23,16 +24,17 @@ Device-specific Bluetooth/USB identifiers live in a local settings file, not in 
   - Battery Level characteristic: `00002a19-0000-1000-8000-00805f9b34fb`
 - .NET 8 SDK to build from source
 
-## Configure a device
+## Configure devices
 
 List paired/present BLE devices:
 
 ```bash
 BluetoothBatteryTray.exe --list-bluetooth
 BluetoothBatteryTray.exe --list-bluetooth --filter keyboard
+BluetoothBatteryTray.exe --list-bluetooth --filter mouse
 ```
 
-Configure the app with a display name and BLE address:
+Configure the first device with a display name and BLE address:
 
 ```bash
 BluetoothBatteryTray.exe --configure \
@@ -40,16 +42,28 @@ BluetoothBatteryTray.exe --configure \
   --address AABBCCDDEEFF
 ```
 
-Optional USB-C/wired fallback detection:
+Add another monitored device:
+
+```bash
+BluetoothBatteryTray.exe --add-device \
+  --name "My Mouse" \
+  --address 112233445566
+```
+
+Optional USB-C/wired/HID fallback detection:
 
 ```bash
 BluetoothBatteryTray.exe --list-usb --filter keyboard
+BluetoothBatteryTray.exe --list-usb --filter mouse
 
-BluetoothBatteryTray.exe --configure \
-  --name "My Keyboard" \
-  --address AABBCCDDEEFF \
-  --usb-id "VID_1234&PID_5678"
+BluetoothBatteryTray.exe --add-device \
+  --name "My Mouse" \
+  --address 112233445566 \
+  --fallback-id "VID_1234&PID_5678" \
+  --connection-label "HID connected"
 ```
+
+`--configure` replaces the device list with one device. `--add-device` adds or updates a single device while preserving the rest of the list.
 
 Show the active local config:
 
@@ -67,9 +81,20 @@ Example config:
 
 ```json
 {
-  "DeviceDisplayName": "My Keyboard",
-  "BluetoothAddress": "AABBCCDDEEFF",
-  "UsbDeviceIdContains": "VID_1234&PID_5678",
+  "Devices": [
+    {
+      "DeviceDisplayName": "My Keyboard",
+      "BluetoothAddress": "AABBCCDDEEFF",
+      "UsbDeviceIdContains": "VID_1234&PID_5678",
+      "UsbConnectionLabel": "USB-C connected"
+    },
+    {
+      "DeviceDisplayName": "My Mouse",
+      "BluetoothAddress": "112233445566",
+      "UsbDeviceIdContains": "VID_ABCD&PID_EF01",
+      "UsbConnectionLabel": "HID connected"
+    }
+  ],
   "LowThresholdPercent": 20,
   "WarningThresholdPercent": 30,
   "PollIntervalSeconds": 300,
@@ -82,7 +107,7 @@ Example config:
 - Green badge: battery above warning threshold.
 - Yellow badge: battery at or below warning threshold.
 - Red badge: battery at or below low threshold.
-- Gray/USB badge: Bluetooth percentage unavailable or USB-C/wired mode detected.
+- Gray/fallback badge: Bluetooth percentage unavailable or fallback connection detected.
 - Lightning marker: USB-C/wired mode detected.
 
 Right-click the tray icon for:
@@ -109,7 +134,7 @@ dotnet run --project src/ZephyrusKeyboardBattery/ZephyrusKeyboardBattery.csproj 
 A successful Bluetooth read looks like:
 
 ```text
-My Keyboard: 87%
+My Keyboard: 87%; My Mouse: 94%
 ```
 
 The app also writes its latest status to:

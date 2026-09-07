@@ -39,10 +39,11 @@ internal sealed class TrayAppContext : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(exitItem);
 
+        var initialName = _settings.Devices.Count == 1 ? _settings.Devices[0].DeviceDisplayName : "Bluetooth batteries";
         _notifyIcon = new NotifyIcon
         {
             Text = "Bluetooth battery: checking…",
-            Icon = TrayIconFactory.Create(new BatteryReadResult(_settings.DeviceDisplayName, null, true, "Checking")),
+            Icon = TrayIconFactory.Create(new BatteryReadResult(initialName, null, true, "Checking"), _settings),
             ContextMenuStrip = menu,
             Visible = true
         };

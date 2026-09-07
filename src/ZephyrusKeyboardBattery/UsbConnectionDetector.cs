@@ -4,18 +4,27 @@ namespace ZephyrusKeyboardBattery;
 
 internal static class UsbConnectionDetector
 {
-    public static bool IsUsbConnected(AppSettings settings)
+    public static bool IsUsbConnected(DeviceSettings deviceSettings)
     {
-        if (string.IsNullOrWhiteSpace(settings.UsbDeviceIdContains))
+        if (string.IsNullOrWhiteSpace(deviceSettings.UsbDeviceIdContains))
         {
             return false;
         }
 
         try
         {
-            foreach (var deviceId in GetMatchingPresentDeviceIds(settings.UsbDeviceIdContains))
+            var needle = deviceSettings.UsbDeviceIdContains.Trim();
+            using var searcher = new ManagementObjectSearcher(
+                "SELECT DeviceID, PNPDeviceID, Name FROM Win32_PnPEntity WHERE PNPDeviceID IS NOT NULL");
+
+            foreach (var item in searcher.Get().Cast<ManagementObject>())
             {
-                if (!string.IsNullOrWhiteSpace(deviceId))
+                var pnpDeviceId = item["PNPDeviceID"]?.ToString() ?? string.Empty;
+                var deviceId = item["DeviceID"]?.ToString() ?? string.Empty;
+                var name = item["Name"]?.ToString() ?? string.Empty;
+                if (ContainsIgnoreCase(pnpDeviceId, needle)
+                    || ContainsIgnoreCase(deviceId, needle)
+                    || ContainsIgnoreCase(name, needle))
                 {
                     return true;
                 }
@@ -23,7 +32,7 @@ internal static class UsbConnectionDetector
         }
         catch
         {
-            // Best-effort fallback only. If WMI is unhappy, do not break BLE reads.
+            // Best-effort fallback only. If WMI is unavailable, keep reporting BLE state.
         }
 
         return false;
@@ -31,40 +40,41 @@ internal static class UsbConnectionDetector
 
     public static IEnumerable<UsbDeviceInfo> ListPresentUsbHidDevices(string? filter = null)
     {
-        var normalizedFilter = filter?.Trim();
         using var searcher = new ManagementObjectSearcher(
-            "SELECT DeviceID, Name, Status FROM Win32_PnPEntity " +
-            "WHERE DeviceID LIKE 'USB\\\\%' OR DeviceID LIKE 'HID\\\\%'");
+            "SELECT DeviceID, PNPDeviceID, Name FROM Win32_PnPEntity WHERE PNPDeviceID IS NOT NULL");
 
-        foreach (ManagementObject device in searcher.Get().Cast<ManagementObject>())
+        foreach (var item in searcher.Get().Cast<ManagementObject>())
         {
-            var status = device["Status"]?.ToString() ?? string.Empty;
-            if (!string.Equals(status, "OK", StringComparison.OrdinalIgnoreCase))
+            var pnpDeviceId = item["PNPDeviceID"]?.ToString() ?? string.Empty;
+            var deviceId = item["DeviceID"]?.ToString() ?? pnpDeviceId;
+            var name = item["Name"]?.ToString() ?? "Unknown USB/HID device";
+
+            if (!LooksLikeUsbOrHid(pnpDeviceId))
             {
                 continue;
             }
 
-            var id = device["DeviceID"]?.ToString() ?? string.Empty;
-            var name = device["Name"]?.ToString() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(id))
+            if (!string.IsNullOrWhiteSpace(filter)
+                && !ContainsIgnoreCase(name, filter)
+                && !ContainsIgnoreCase(pnpDeviceId, filter)
+                && !ContainsIgnoreCase(deviceId, filter))
             {
                 continue;
             }
 
-            if (!string.IsNullOrWhiteSpace(normalizedFilter) &&
-                !id.Contains(normalizedFilter, StringComparison.OrdinalIgnoreCase) &&
-                !name.Contains(normalizedFilter, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            yield return new UsbDeviceInfo(name, id);
+            yield return new UsbDeviceInfo(name, string.IsNullOrWhiteSpace(pnpDeviceId) ? deviceId : pnpDeviceId);
         }
     }
 
-    private static IEnumerable<string> GetMatchingPresentDeviceIds(string deviceIdContains)
+    private static bool LooksLikeUsbOrHid(string value)
     {
-        return ListPresentUsbHidDevices(deviceIdContains).Select(device => device.DeviceId);
+        return value.StartsWith("USB\\", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("HID\\", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ContainsIgnoreCase(string haystack, string needle)
+    {
+        return haystack.Contains(needle, StringComparison.OrdinalIgnoreCase);
     }
 }
 

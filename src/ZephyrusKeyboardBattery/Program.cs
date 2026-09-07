@@ -40,7 +40,14 @@ internal static class Program
         if (args.Contains("--configure", StringComparer.OrdinalIgnoreCase))
         {
             ConsoleBridge.AttachParentConsole();
-            Configure(args);
+            Configure(args, replaceAllDevices: true);
+            return 0;
+        }
+
+        if (args.Contains("--add-device", StringComparer.OrdinalIgnoreCase))
+        {
+            ConsoleBridge.AttachParentConsole();
+            Configure(args, replaceAllDevices: false);
             return 0;
         }
 
@@ -82,16 +89,59 @@ internal static class Program
         StatusStore.Write(result);
         Console.WriteLine(result.ToDisplayLine());
         Console.WriteLine($"Status file: {StatusStore.LastStatusPath}");
-        return result.Percent.HasValue || result.Source.Contains("USB", StringComparison.OrdinalIgnoreCase) ? 0 : 2;
+        return result.Percent.HasValue || result.IsConnected ? 0 : 2;
     }
 
-    private static void Configure(string[] args)
+    private static void Configure(string[] args, bool replaceAllDevices)
     {
         var settings = SettingsStore.Load();
-        settings.DeviceDisplayName = ArgValue(args, "--name") ?? settings.DeviceDisplayName;
-        settings.BluetoothAddress = ArgValue(args, "--address") ?? settings.BluetoothAddress;
-        settings.UsbDeviceIdContains = ArgValue(args, "--usb-id") ?? settings.UsbDeviceIdContains;
+        var device = BuildDeviceFromArgs(args, replaceAllDevices ? settings.Devices.FirstOrDefault() : null);
 
+        if (replaceAllDevices)
+        {
+            settings.Devices = [device];
+        }
+        else
+        {
+            UpsertDevice(settings.Devices, device);
+        }
+
+        ApplyGlobalSettingsFromArgs(settings, args);
+        SettingsStore.Save(settings);
+        Console.WriteLine($"Saved config: {SettingsStore.SettingsPath}");
+        Console.WriteLine(File.ReadAllText(SettingsStore.SettingsPath));
+    }
+
+    private static DeviceSettings BuildDeviceFromArgs(string[] args, DeviceSettings? fallback)
+    {
+        return new DeviceSettings
+        {
+            DeviceDisplayName = ArgValue(args, "--name") ?? fallback?.DeviceDisplayName ?? AppConstants.DefaultDisplayName,
+            BluetoothAddress = ArgValue(args, "--address") ?? fallback?.BluetoothAddress,
+            UsbDeviceIdContains = ArgValue(args, "--usb-id") ?? ArgValue(args, "--fallback-id") ?? fallback?.UsbDeviceIdContains,
+            UsbConnectionLabel = ArgValue(args, "--connection-label") ?? fallback?.UsbConnectionLabel ?? "USB-C connected"
+        };
+    }
+
+    private static void UpsertDevice(List<DeviceSettings> devices, DeviceSettings device)
+    {
+        var existing = devices.FindIndex(candidate =>
+            string.Equals(candidate.DeviceDisplayName, device.DeviceDisplayName, StringComparison.OrdinalIgnoreCase)
+            || (!string.IsNullOrWhiteSpace(candidate.BluetoothAddress)
+                && string.Equals(candidate.BluetoothAddress, device.BluetoothAddress, StringComparison.OrdinalIgnoreCase)));
+
+        if (existing >= 0)
+        {
+            devices[existing] = device;
+        }
+        else
+        {
+            devices.Add(device);
+        }
+    }
+
+    private static void ApplyGlobalSettingsFromArgs(AppSettings settings, string[] args)
+    {
         if (int.TryParse(ArgValue(args, "--low"), out var low))
         {
             settings.LowThresholdPercent = low;
@@ -106,10 +156,6 @@ internal static class Program
         {
             settings.PollIntervalSeconds = pollSeconds;
         }
-
-        SettingsStore.Save(settings);
-        Console.WriteLine($"Saved config: {SettingsStore.SettingsPath}");
-        Console.WriteLine(File.ReadAllText(SettingsStore.SettingsPath));
     }
 
     private static void ListBluetoothDevices(string? filter)
@@ -168,6 +214,7 @@ internal static class Program
         Console.WriteLine("  BluetoothBatteryTray --list-bluetooth [--filter text]");
         Console.WriteLine("  BluetoothBatteryTray --list-usb [--filter text]");
         Console.WriteLine("  BluetoothBatteryTray --configure --name \"Device Name\" --address AABBCCDDEEFF [--usb-id VID_1234&PID_5678]");
+        Console.WriteLine("  BluetoothBatteryTray --add-device --name \"Second Device\" --address 112233445566 [--fallback-id text] [--connection-label text]");
         Console.WriteLine("  BluetoothBatteryTray --check-once");
         Console.WriteLine("  BluetoothBatteryTray --install-startup");
         Console.WriteLine("  BluetoothBatteryTray --uninstall-startup");
