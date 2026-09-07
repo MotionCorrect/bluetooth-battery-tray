@@ -1,39 +1,87 @@
-# Zephyrus Keyboard Battery
+# Bluetooth Battery Tray
 
-A tiny Windows tray utility for monitoring the **ASUS ROG Zephyrus Duo Keyboard** battery on this PC.
+A tiny configurable Windows tray utility for monitoring a Bluetooth Low Energy peripheral that exposes the standard BLE Battery Service.
 
-This is intentionally small and special-purpose: it hardcodes the known keyboard identifiers and focuses on a glanceable tray indicator rather than a generic Bluetooth-device dashboard.
+Device-specific Bluetooth/USB identifiers live in a local settings file, not in code.
 
 ## Features
 
-- Reads exact battery percentage from the keyboard's Bluetooth LE Battery Service.
+- Reads exact battery percentage from the standard BLE Battery Service.
 - Displays large, color-coded percentage digits in the Windows notification area.
-- Shows the exact status in the tray tooltip and right-click menu.
-- Warns when battery is low (`<= 20%`).
-- Detects the USB-C/wired device path when Bluetooth battery reads are unavailable.
-- In USB-C mode, shows `USB-C connected` and, when available, keeps displaying the last known Bluetooth battery percentage.
+- Shows exact status in the tray tooltip and right-click menu.
+- Warns when battery is low.
+- Optional USB-C/wired-mode detection using a configurable USB/HID device-id fragment.
+- In USB-C mode, can show `USB-C connected` and the last known Bluetooth percentage when available.
 - Optional current-user auto-start via the Windows `HKCU` Run key.
 - No installer required; publish as a single self-contained Windows executable.
 
-## Hardware assumptions
+## Requirements
 
-The app is built for this known local device:
+- Windows 10 or later
+- A Bluetooth LE device exposing:
+  - Battery Service: `0000180f-0000-1000-8000-00805f9b34fb`
+  - Battery Level characteristic: `00002a19-0000-1000-8000-00805f9b34fb`
+- .NET 8 SDK to build from source
 
-| Item | Value |
-| --- | --- |
-| Windows Bluetooth name | `Zephyrus Duo Keyboard` |
-| BLE address | `CD4AA5ADDD4B` |
-| BLE Battery Service | `0000180f-0000-1000-8000-00805f9b34fb` |
-| BLE Battery Level characteristic | `00002a19-0000-1000-8000-00805f9b34fb` |
-| USB-C/wired identifier | `VID_0B05&PID_193B` |
+## Configure a device
 
-If the keyboard is re-paired and Windows assigns a different BLE address, update `KeyboardBluetoothAddress` in `src/ZephyrusKeyboardBattery/AppConstants.cs`.
+List paired/present BLE devices:
+
+```bash
+BluetoothBatteryTray.exe --list-bluetooth
+BluetoothBatteryTray.exe --list-bluetooth --filter keyboard
+```
+
+Configure the app with a display name and BLE address:
+
+```bash
+BluetoothBatteryTray.exe --configure \
+  --name "My Keyboard" \
+  --address AABBCCDDEEFF
+```
+
+Optional USB-C/wired fallback detection:
+
+```bash
+BluetoothBatteryTray.exe --list-usb --filter keyboard
+
+BluetoothBatteryTray.exe --configure \
+  --name "My Keyboard" \
+  --address AABBCCDDEEFF \
+  --usb-id "VID_1234&PID_5678"
+```
+
+Show the active local config:
+
+```bash
+BluetoothBatteryTray.exe --show-config
+```
+
+Settings are stored at:
+
+```text
+%LOCALAPPDATA%\BluetoothBatteryTray\settings.json
+```
+
+Example config:
+
+```json
+{
+  "DeviceDisplayName": "My Keyboard",
+  "BluetoothAddress": "AABBCCDDEEFF",
+  "UsbDeviceIdContains": "VID_1234&PID_5678",
+  "LowThresholdPercent": 20,
+  "WarningThresholdPercent": 30,
+  "PollIntervalSeconds": 300,
+  "LowBatteryRenotifyHours": 8
+}
+```
 
 ## Tray behavior
 
 - Green badge: battery above warning threshold.
-- Yellow badge: battery at or below `30%`.
-- Red badge: battery at or below `20%`.
+- Yellow badge: battery at or below warning threshold.
+- Red badge: battery at or below low threshold.
 - Gray/USB badge: Bluetooth percentage unavailable or USB-C/wired mode detected.
 - Lightning marker: USB-C/wired mode detected.
 
@@ -41,19 +89,13 @@ Right-click the tray icon for:
 
 - current battery status
 - `Check now`
+- `Open settings file`
 - `Start with Windows`
 - `Exit`
 
 ## Build locally
 
-Requirements:
-
-- Windows 10 or later
-- .NET 8 SDK
-
 ```bash
-cd /c/git/zephyrus-keyboard-battery
-
 dotnet restore ZephyrusKeyboardBattery.sln
 dotnet build ZephyrusKeyboardBattery.sln --configuration Release
 ```
@@ -67,13 +109,13 @@ dotnet run --project src/ZephyrusKeyboardBattery/ZephyrusKeyboardBattery.csproj 
 A successful Bluetooth read looks like:
 
 ```text
-Zephyrus Duo Keyboard: 100%
+My Keyboard: 87%
 ```
 
 The app also writes its latest status to:
 
 ```text
-%LOCALAPPDATA%\ZephyrusKeyboardBattery\last-status.txt
+%LOCALAPPDATA%\BluetoothBatteryTray\last-status.txt
 ```
 
 ## Publish single executable
@@ -91,7 +133,7 @@ dotnet publish src/ZephyrusKeyboardBattery/ZephyrusKeyboardBattery.csproj \
 Published executable:
 
 ```text
-publish\win-x64\ZephyrusKeyboardBattery.exe
+publish\win-x64\BluetoothBatteryTray.exe
 ```
 
 ## Auto-start
@@ -99,30 +141,33 @@ publish\win-x64\ZephyrusKeyboardBattery.exe
 Install current-user startup using the published executable:
 
 ```bash
-./publish/win-x64/ZephyrusKeyboardBattery.exe --install-startup
+./publish/win-x64/BluetoothBatteryTray.exe --install-startup
 ```
 
 Remove current-user startup:
 
 ```bash
-./publish/win-x64/ZephyrusKeyboardBattery.exe --uninstall-startup
+./publish/win-x64/BluetoothBatteryTray.exe --uninstall-startup
 ```
 
 The registry value is stored at:
 
 ```text
-HKCU\Software\Microsoft\Windows\CurrentVersion\Run\ZephyrusKeyboardBattery
+HKCU\Software\Microsoft\Windows\CurrentVersion\Run\BluetoothBatteryTray
 ```
 
-## CI
+## CI and releases
 
 GitHub Actions builds the app on `windows-latest`, publishes a self-contained `win-x64` executable, and uploads it as an artifact.
+
+Tagged releases include the GitHub source archives automatically plus a downloadable Windows binary archive.
 
 ## Limitations
 
 - Fresh exact battery percentage comes from Bluetooth LE only.
 - USB-C/wired mode detection is best-effort and does not guarantee a live USB battery percentage; it may show the last known Bluetooth percentage.
-- Charging state is not authoritative because the keyboard does not expose a separate standard charging-status characteristic through the probed BLE services.
+- Charging state is not authoritative unless a device exposes charging telemetry through some other device-specific interface.
+- Some peripherals sleep aggressively; if the battery service is temporarily unreachable, wake the device and use `Check now`.
 
 ## License
 

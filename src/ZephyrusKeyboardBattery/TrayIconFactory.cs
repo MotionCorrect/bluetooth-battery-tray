@@ -9,9 +9,10 @@ internal static class TrayIconFactory
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool DestroyIcon(IntPtr hIcon);
 
-    public static Icon Create(BatteryReadResult result)
+    public static Icon Create(BatteryReadResult result, AppSettings? settings = null)
     {
-        var color = StateColor(result);
+        settings ??= SettingsStore.Load();
+        var color = StateColor(result, settings);
         var label = result.Percent is int percent
             ? percent.ToString()
             : result.Source.Contains("USB", StringComparison.OrdinalIgnoreCase) ? "USB" : "?";
@@ -68,19 +69,19 @@ internal static class TrayIconFactory
         }
     }
 
-    private static Color StateColor(BatteryReadResult result)
+    private static Color StateColor(BatteryReadResult result, AppSettings settings)
     {
         if (result.Percent is not int percent)
         {
             return Color.DimGray;
         }
 
-        if (percent <= AppConstants.LowThresholdPercent)
+        if (percent <= settings.LowThresholdPercent)
         {
             return Color.FromArgb(214, 48, 49);
         }
 
-        if (percent <= AppConstants.WarningThresholdPercent)
+        if (percent <= settings.WarningThresholdPercent)
         {
             return Color.FromArgb(241, 196, 15);
         }

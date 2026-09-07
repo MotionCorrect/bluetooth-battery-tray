@@ -1,6 +1,7 @@
 namespace ZephyrusKeyboardBattery;
 
 public sealed record BatteryReadResult(
+    string DeviceDisplayName,
     int? Percent,
     bool IsConnected,
     string Status,
@@ -14,19 +15,18 @@ public sealed record BatteryReadResult(
         {
             if (IsStale && Source.Contains("USB", StringComparison.OrdinalIgnoreCase))
             {
-                return $"{AppConstants.KeyboardDisplayName}: USB-C connected (last BT {percent}%)";
+                return $"{DeviceDisplayName}: USB-C connected (last BT {percent}%)";
             }
 
-            var label = percent <= AppConstants.LowThresholdPercent ? "LOW " : string.Empty;
-            return $"{AppConstants.KeyboardDisplayName}: {label}{percent}%";
+            return $"{DeviceDisplayName}: {percent}%";
         }
 
         if (Source.Contains("USB", StringComparison.OrdinalIgnoreCase))
         {
-            return $"{AppConstants.KeyboardDisplayName}: USB-C connected (battery unavailable)";
+            return $"{DeviceDisplayName}: USB-C connected (battery unavailable)";
         }
 
-        return $"{AppConstants.KeyboardDisplayName}: {Status}" +
+        return $"{DeviceDisplayName}: {Status}" +
                (string.IsNullOrWhiteSpace(Error) ? string.Empty : $" ({Error})");
     }
 }

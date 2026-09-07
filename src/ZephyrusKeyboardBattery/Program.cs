@@ -7,9 +7,41 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        if (args.Contains("--check-once", StringComparer.OrdinalIgnoreCase))
+        if (args.Contains("--help", StringComparer.OrdinalIgnoreCase) || args.Contains("-h", StringComparer.OrdinalIgnoreCase))
         {
-            return CheckOnceAsync().GetAwaiter().GetResult();
+            ConsoleBridge.AttachParentConsole();
+            PrintHelp();
+            return 0;
+        }
+
+        if (args.Contains("--list-bluetooth", StringComparer.OrdinalIgnoreCase))
+        {
+            ConsoleBridge.AttachParentConsole();
+            ListBluetoothDevices(ArgValue(args, "--filter"));
+            return 0;
+        }
+
+        if (args.Contains("--list-usb", StringComparer.OrdinalIgnoreCase))
+        {
+            ConsoleBridge.AttachParentConsole();
+            ListUsbDevices(ArgValue(args, "--filter"));
+            return 0;
+        }
+
+        if (args.Contains("--show-config", StringComparer.OrdinalIgnoreCase))
+        {
+            ConsoleBridge.AttachParentConsole();
+            SettingsStore.EnsureExists();
+            Console.WriteLine(SettingsStore.SettingsPath);
+            Console.WriteLine(File.ReadAllText(SettingsStore.SettingsPath));
+            return 0;
+        }
+
+        if (args.Contains("--configure", StringComparer.OrdinalIgnoreCase))
+        {
+            ConsoleBridge.AttachParentConsole();
+            Configure(args);
+            return 0;
         }
 
         if (args.Contains("--install-startup", StringComparer.OrdinalIgnoreCase))
@@ -28,23 +60,72 @@ internal static class Program
             return 0;
         }
 
+        var settings = SettingsStore.Load();
+        if (args.Contains("--check-once", StringComparer.OrdinalIgnoreCase))
+        {
+            return CheckOnceAsync(settings).GetAwaiter().GetResult();
+        }
+
         var fakePercent = ParseFakePercent(args);
-        IBatteryReader reader = fakePercent is int percent ? new FakeBatteryReader(percent) : new BatteryReader();
+        IBatteryReader reader = fakePercent is int percent ? new FakeBatteryReader(percent, settings) : new BatteryReader(settings);
 
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new TrayAppContext(reader));
+        Application.Run(new TrayAppContext(settings, reader));
         return 0;
     }
 
-    private static async Task<int> CheckOnceAsync()
+    private static async Task<int> CheckOnceAsync(AppSettings settings)
     {
         ConsoleBridge.AttachParentConsole();
-        var result = await new BatteryReader().ReadAsync(TimeSpan.FromSeconds(20));
+        var result = await new BatteryReader(settings).ReadAsync(TimeSpan.FromSeconds(20));
         StatusStore.Write(result);
         Console.WriteLine(result.ToDisplayLine());
         Console.WriteLine($"Status file: {StatusStore.LastStatusPath}");
-        return result.Percent.HasValue ? 0 : 2;
+        return result.Percent.HasValue || result.Source.Contains("USB", StringComparison.OrdinalIgnoreCase) ? 0 : 2;
+    }
+
+    private static void Configure(string[] args)
+    {
+        var settings = SettingsStore.Load();
+        settings.DeviceDisplayName = ArgValue(args, "--name") ?? settings.DeviceDisplayName;
+        settings.BluetoothAddress = ArgValue(args, "--address") ?? settings.BluetoothAddress;
+        settings.UsbDeviceIdContains = ArgValue(args, "--usb-id") ?? settings.UsbDeviceIdContains;
+
+        if (int.TryParse(ArgValue(args, "--low"), out var low))
+        {
+            settings.LowThresholdPercent = low;
+        }
+
+        if (int.TryParse(ArgValue(args, "--warning"), out var warning))
+        {
+            settings.WarningThresholdPercent = warning;
+        }
+
+        if (int.TryParse(ArgValue(args, "--poll-seconds"), out var pollSeconds))
+        {
+            settings.PollIntervalSeconds = pollSeconds;
+        }
+
+        SettingsStore.Save(settings);
+        Console.WriteLine($"Saved config: {SettingsStore.SettingsPath}");
+        Console.WriteLine(File.ReadAllText(SettingsStore.SettingsPath));
+    }
+
+    private static void ListBluetoothDevices(string? filter)
+    {
+        foreach (var device in DeviceDiscovery.ListBluetoothLeDevices(filter).OrderBy(device => device.Name))
+        {
+            Console.WriteLine($"{device.Name} | address={device.Address} | status={device.Status}");
+        }
+    }
+
+    private static void ListUsbDevices(string? filter)
+    {
+        foreach (var device in UsbConnectionDetector.ListPresentUsbHidDevices(filter).OrderBy(device => device.Name))
+        {
+            Console.WriteLine($"{device.Name} | id={device.DeviceId}");
+        }
     }
 
     private static int? ParseFakePercent(string[] args)
@@ -54,15 +135,42 @@ internal static class Program
             return 18;
         }
 
-        const string prefix = "--fake-percent=";
-        var arg = args.FirstOrDefault(a => a.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
-        if (arg is null)
-        {
-            return null;
-        }
-
-        return int.TryParse(arg[prefix.Length..], out var percent)
+        var arg = ArgValue(args, "--fake-percent");
+        return int.TryParse(arg, out var percent)
             ? Math.Clamp(percent, 0, 100)
             : null;
+    }
+
+    private static string? ArgValue(string[] args, string name)
+    {
+        var prefix = name + "=";
+        for (var i = 0; i < args.Length; i++)
+        {
+            if (args[i].StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return args[i][prefix.Length..];
+            }
+
+            if (string.Equals(args[i], name, StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                return args[i + 1];
+            }
+        }
+
+        return null;
+    }
+
+    private static void PrintHelp()
+    {
+        Console.WriteLine("Bluetooth Battery Tray");
+        Console.WriteLine();
+        Console.WriteLine("Usage:");
+        Console.WriteLine("  BluetoothBatteryTray --list-bluetooth [--filter text]");
+        Console.WriteLine("  BluetoothBatteryTray --list-usb [--filter text]");
+        Console.WriteLine("  BluetoothBatteryTray --configure --name \"Device Name\" --address AABBCCDDEEFF [--usb-id VID_1234&PID_5678]");
+        Console.WriteLine("  BluetoothBatteryTray --check-once");
+        Console.WriteLine("  BluetoothBatteryTray --install-startup");
+        Console.WriteLine("  BluetoothBatteryTray --uninstall-startup");
+        Console.WriteLine("  BluetoothBatteryTray --show-config");
     }
 }

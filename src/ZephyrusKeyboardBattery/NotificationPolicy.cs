@@ -1,6 +1,6 @@
 namespace ZephyrusKeyboardBattery;
 
-public sealed class NotificationPolicy
+public sealed class NotificationPolicy(AppSettings settings)
 {
     private DateTimeOffset? _lastLowNotificationAt;
     private bool _wasLow;
@@ -12,21 +12,21 @@ public sealed class NotificationPolicy
             return false;
         }
 
-        if (percent > AppConstants.WarningThresholdPercent)
+        if (percent > settings.WarningThresholdPercent)
         {
             _wasLow = false;
             _lastLowNotificationAt = null;
             return false;
         }
 
-        if (percent > AppConstants.LowThresholdPercent)
+        if (percent > settings.LowThresholdPercent)
         {
             return false;
         }
 
         var shouldNotify = !_wasLow ||
                            _lastLowNotificationAt is null ||
-                           now - _lastLowNotificationAt.Value >= AppConstants.LowBatteryRenotifyInterval;
+                           now - _lastLowNotificationAt.Value >= settings.LowBatteryRenotifyInterval;
 
         _wasLow = true;
         if (shouldNotify)

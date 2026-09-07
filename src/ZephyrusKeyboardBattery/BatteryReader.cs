@@ -4,29 +4,39 @@ using Windows.Storage.Streams;
 
 namespace ZephyrusKeyboardBattery;
 
-public sealed class BatteryReader : IBatteryReader
+public sealed class BatteryReader(AppSettings settings) : IBatteryReader
 {
     private static readonly Guid BatteryServiceUuid = Guid.Parse("0000180f-0000-1000-8000-00805f9b34fb");
     private static readonly Guid BatteryLevelUuid = Guid.Parse("00002a19-0000-1000-8000-00805f9b34fb");
 
     public async Task<BatteryReadResult> ReadAsync(TimeSpan? timeout = null)
     {
-        var readTask = ReadCoreAsync();
+        if (!settings.TryGetBluetoothAddress(out var address))
+        {
+            return new BatteryReadResult(
+                settings.DeviceDisplayName,
+                null,
+                false,
+                "Not configured",
+                $"Set BluetoothAddress in {SettingsStore.SettingsPath}");
+        }
+
+        var readTask = ReadCoreAsync(address);
         var maxWait = timeout ?? TimeSpan.FromSeconds(20);
         var completed = await Task.WhenAny(readTask, Task.Delay(maxWait));
         if (completed != readTask)
         {
-            return new BatteryReadResult(null, false, "Timed out", $"No BLE response within {maxWait.TotalSeconds:0}s");
+            return UsbFallback($"No BLE response within {maxWait.TotalSeconds:0}s");
         }
 
         return await readTask;
     }
 
-    private static async Task<BatteryReadResult> ReadCoreAsync()
+    private async Task<BatteryReadResult> ReadCoreAsync(ulong address)
     {
         try
         {
-            using var device = await BluetoothLEDevice.FromBluetoothAddressAsync(AppConstants.KeyboardBluetoothAddress);
+            using var device = await BluetoothLEDevice.FromBluetoothAddressAsync(address);
             if (device is null)
             {
                 return UsbFallback("Device not found");
@@ -55,7 +65,7 @@ public sealed class BatteryReader : IBatteryReader
 
             var reader = DataReader.FromBuffer(read.Value);
             var percent = Math.Clamp(reader.ReadByte(), (byte)0, (byte)100);
-            return new BatteryReadResult(percent, connected, "Ok", Source: "Bluetooth LE");
+            return new BatteryReadResult(settings.DeviceDisplayName, percent, connected, "Ok", Source: "Bluetooth LE");
         }
         catch (Exception ex)
         {
@@ -63,15 +73,16 @@ public sealed class BatteryReader : IBatteryReader
         }
     }
 
-    private static BatteryReadResult UsbFallback(string bluetoothError, bool bluetoothConnected = false)
+    private BatteryReadResult UsbFallback(string bluetoothError, bool bluetoothConnected = false)
     {
-        if (!UsbConnectionDetector.IsUsbConnected())
+        if (!UsbConnectionDetector.IsUsbConnected(settings))
         {
-            return new BatteryReadResult(null, bluetoothConnected, "Unavailable", bluetoothError, Source: "Bluetooth LE");
+            return new BatteryReadResult(settings.DeviceDisplayName, null, bluetoothConnected, "Unavailable", bluetoothError, Source: "Bluetooth LE");
         }
 
         var lastKnownPercent = StatusStore.ReadLastKnownPercent();
         return new BatteryReadResult(
+            settings.DeviceDisplayName,
             lastKnownPercent,
             true,
             "USB-C connected",

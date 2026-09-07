@@ -4,8 +4,9 @@ namespace ZephyrusKeyboardBattery;
 
 internal sealed class TrayAppContext : ApplicationContext
 {
+    private readonly AppSettings _settings;
     private readonly IBatteryReader _batteryReader;
-    private readonly NotificationPolicy _notificationPolicy = new();
+    private readonly NotificationPolicy _notificationPolicy;
     private readonly NotifyIcon _notifyIcon;
     private readonly ToolStripMenuItem _statusItem;
     private readonly ToolStripMenuItem _startupItem;
@@ -13,9 +14,11 @@ internal sealed class TrayAppContext : ApplicationContext
     private readonly System.Windows.Forms.Timer _timer;
     private bool _refreshInProgress;
 
-    public TrayAppContext(IBatteryReader batteryReader)
+    public TrayAppContext(AppSettings settings, IBatteryReader batteryReader)
     {
+        _settings = settings;
         _batteryReader = batteryReader;
+        _notificationPolicy = new NotificationPolicy(settings);
 
         _statusItem = new ToolStripMenuItem("Checking battery…") { Enabled = false };
         _checkNowItem = new ToolStripMenuItem("Check now", null, async (_, _) => await RefreshAsync(showCheckingState: true));
@@ -24,26 +27,28 @@ internal sealed class TrayAppContext : ApplicationContext
             Checked = StartupRegistration.IsEnabled(),
             CheckOnClick = false
         };
+        var openSettingsItem = new ToolStripMenuItem("Open settings file", null, (_, _) => OpenSettingsFile());
         var exitItem = new ToolStripMenuItem("Exit", null, (_, _) => ExitThread());
 
         var menu = new ContextMenuStrip();
         menu.Items.Add(_statusItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_checkNowItem);
+        menu.Items.Add(openSettingsItem);
         menu.Items.Add(_startupItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(exitItem);
 
         _notifyIcon = new NotifyIcon
         {
-            Text = "Zephyrus keyboard: checking…",
-            Icon = TrayIconFactory.Create(new BatteryReadResult(null, true, "Checking")),
+            Text = "Bluetooth battery: checking…",
+            Icon = TrayIconFactory.Create(new BatteryReadResult(_settings.DeviceDisplayName, null, true, "Checking")),
             ContextMenuStrip = menu,
             Visible = true
         };
         _notifyIcon.DoubleClick += async (_, _) => await RefreshAsync(showCheckingState: true);
 
-        _timer = new System.Windows.Forms.Timer { Interval = (int)AppConstants.PollInterval.TotalMilliseconds };
+        _timer = new System.Windows.Forms.Timer { Interval = (int)_settings.PollInterval.TotalMilliseconds };
         _timer.Tick += async (_, _) => await RefreshAsync(showCheckingState: false);
         _timer.Start();
 
@@ -65,7 +70,7 @@ internal sealed class TrayAppContext : ApplicationContext
             if (showCheckingState)
             {
                 _statusItem.Text = "Checking battery…";
-                _notifyIcon.Text = "Zephyrus keyboard: checking…";
+                _notifyIcon.Text = "Bluetooth battery: checking…";
             }
 
             var result = await _batteryReader.ReadAsync(TimeSpan.FromSeconds(20));
@@ -86,17 +91,27 @@ internal sealed class TrayAppContext : ApplicationContext
         _notifyIcon.Text = TrimTooltip(displayLine);
 
         var oldIcon = _notifyIcon.Icon;
-        _notifyIcon.Icon = TrayIconFactory.Create(result);
+        _notifyIcon.Icon = TrayIconFactory.Create(result, _settings);
         oldIcon?.Dispose();
 
         if (_notificationPolicy.ShouldNotify(result, DateTimeOffset.Now) && result.Percent is int percent)
         {
             _notifyIcon.ShowBalloonTip(
                 10_000,
-                "Keyboard battery low",
-                $"{AppConstants.KeyboardDisplayName} battery is at {percent}%.",
+                "Bluetooth battery low",
+                $"{result.DeviceDisplayName} battery is at {percent}%.",
                 ToolTipIcon.Warning);
         }
+    }
+
+    private static void OpenSettingsFile()
+    {
+        SettingsStore.EnsureExists();
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = SettingsStore.SettingsPath,
+            UseShellExecute = true
+        });
     }
 
     private void ToggleStartup()

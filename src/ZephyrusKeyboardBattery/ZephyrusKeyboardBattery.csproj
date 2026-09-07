@@ -5,7 +5,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>ZephyrusKeyboardBattery</AssemblyName>
+    <AssemblyName>BluetoothBatteryTray</AssemblyName>
     <RootNamespace>ZephyrusKeyboardBattery</RootNamespace>
   </PropertyGroup>
 

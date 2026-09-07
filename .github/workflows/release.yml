@@ -1,15 +1,22 @@
-name: Build
+name: Release
 
 on:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    tags:
+      - 'v*.*.*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v0.2.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
-  build:
-    name: Build Windows tray app
+  release:
+    name: Build and publish GitHub release
     runs-on: windows-latest
 
     steps:
@@ -37,12 +44,24 @@ jobs:
           -p:PublishTrimmed=false
           --output artifacts/win-x64
 
-      - name: Package artifact
+      - name: Package binary archive
         shell: pwsh
         run: Compress-Archive -Path artifacts/win-x64/* -DestinationPath BluetoothBatteryTray-win-x64.zip -Force
 
-      - name: Upload published executable
-        uses: actions/upload-artifact@v4
+      - name: Resolve tag
+        id: tag
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            "value=${{ inputs.tag }}" >> $env:GITHUB_OUTPUT
+          } else {
+            "value=${{ github.ref_name }}" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
         with:
-          name: BluetoothBatteryTray-win-x64
-          path: BluetoothBatteryTray-win-x64.zip
+          tag_name: ${{ steps.tag.outputs.value }}
+          name: Bluetooth Battery Tray ${{ steps.tag.outputs.value }}
+          generate_release_notes: true
+          files: BluetoothBatteryTray-win-x64.zip
