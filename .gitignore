@@ -1,0 +1,27 @@
+# Build outputs
+bin/
+obj/
+publish/
+artifacts/
+
+# User/local files
+*.user
+*.rsuser
+.vs/
+.vscode/
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Logs/temp
+*.log
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# NuGet
+*.nupkg
+packages/
