@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
   workflow_dispatch:
     inputs:
       tag:
@@ -19,6 +19,7 @@ jobs:
   release:
     name: Build, sign, and publish GitHub release
     runs-on: windows-latest
+    environment: signing
 
     steps:
       - name: Checkout

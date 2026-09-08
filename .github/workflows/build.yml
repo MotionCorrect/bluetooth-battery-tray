@@ -15,6 +15,7 @@ jobs:
   build:
     name: Build Windows tray app
     runs-on: windows-latest
+    environment: signing
 
     steps:
       - name: Checkout
