@@ -53,6 +53,17 @@ public sealed class BatteryReader(AppSettings settings) : IBatteryReader
     {
         try
         {
+            var windowsPercent = WindowsBluetoothBatteryReader.TryReadPercent(deviceSettings);
+            if (windowsPercent.HasValue)
+            {
+                return new BatteryReadResult(
+                    deviceSettings.DeviceDisplayName,
+                    windowsPercent.Value,
+                    true,
+                    "Ok",
+                    Source: "Windows Bluetooth");
+            }
+
             using var device = await BluetoothLEDevice.FromBluetoothAddressAsync(address);
             if (device is null)
             {

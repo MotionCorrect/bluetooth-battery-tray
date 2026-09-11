@@ -6,7 +6,8 @@ Device-specific Bluetooth/USB/HID identifiers live in a local settings file, not
 
 ## Features
 
-- Reads exact battery percentage from the standard BLE Battery Service.
+- Reads battery percentage from Windows' Bluetooth battery property when available, matching Windows Settings.
+- Falls back to the standard BLE Battery Service when Windows does not expose its own percentage.
 - Supports multiple configured devices and uses the lowest current percentage for the tray badge color/number.
 - Displays large, color-coded percentage digits in the Windows notification area.
 - Shows exact per-device status in the tray tooltip and right-click menu.
@@ -189,7 +190,8 @@ Tagged releases include the GitHub source archives automatically plus a download
 
 ## Limitations
 
-- Fresh exact battery percentage comes from Bluetooth LE only.
+- Fresh battery percentage comes from Windows' Bluetooth battery property when present, matching Windows Settings.
+- If Windows does not expose that property, the app falls back to the standard BLE Battery Service (`0000180f` / `00002a19`).
 - USB-C/wired mode detection is best-effort and does not guarantee a live USB battery percentage; it may show the last known Bluetooth percentage.
 - Charging state is not authoritative unless a device exposes charging telemetry through some other device-specific interface.
 - Some peripherals sleep aggressively; if the battery service is temporarily unreachable, wake the device and use `Check now`.
